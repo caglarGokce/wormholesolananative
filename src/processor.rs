@@ -29,8 +29,10 @@ impl Processor {
             WormholeProgramInstruction::RegisterEmitter {foreign_emitter}=> Self::register_emitter(accounts, program_id,foreign_emitter),
             WormholeProgramInstruction::SendMessage {message} => Self::send_message(accounts, program_id,message),
             WormholeProgramInstruction::ReceiveMessage {vaa_hash} => Self::receive_message(accounts, program_id, vaa_hash),
-            WormholeProgramInstruction::InitConfigAndEmitter => Self::initialize_config_and_emitter(accounts, program_id),
-
+            WormholeProgramInstruction::UpdateDiscriminator { discriminator } => Self::update_discriminator(accounts, discriminator),
+            WormholeProgramInstruction::CloseAccount  => Self::close_account(accounts),
+            WormholeProgramInstruction::InitConfigEmitter  => Self::initialize_config_and_emitter(accounts,program_id),
+            
         }
     }
 
@@ -78,9 +80,9 @@ impl Processor {
         }
 */
 
-        let mut payload: Vec<u8> = vec![0; 32];
+        let mut payload: Vec<u8> = vec![0; 33];
 
-        payload[..].copy_from_slice(&program_id.to_bytes());
+        payload[1..].copy_from_slice(&program_id.to_bytes());
 
         let ix:Instruction = Instruction { 
             program_id: *wormhole_program.key,
@@ -96,7 +98,6 @@ impl Processor {
                 rent_meta,
             ].to_vec(), data:   EmitterInstruction::PostMessage 
             {   batch_id: 0, 
-                alive: 0,
                 payload: payload, 
                 finality: 0 }.try_to_vec()?
         };
@@ -133,7 +134,6 @@ impl Processor {
                 &[
                     SEED_PREFIX_EMITTER, &[254]],
         ])?;
-
 
 
 
@@ -237,7 +237,6 @@ impl Processor {
                 rent_meta,
             ].to_vec(), data:   EmitterInstruction::PostMessage 
             {   batch_id: 0, 
-                alive: 1,
                 payload: payload, 
                 finality: 0 }.try_to_vec()?
         };
@@ -311,26 +310,26 @@ impl Processor {
         Ok(())
     }
 
-    pub fn initialize_config_and_emitter(
+    pub fn initialize_config_and_emitter<'info>(
         accounts: &[AccountInfo], 
         program_id: &Pubkey
     ) -> ProgramResult {
+
         let accounts_iter: &mut std::slice::Iter<'_, AccountInfo<'_>> = &mut accounts.iter();
 
-        let owner: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
-        let config: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
-        let wormhole_bridge: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
-        let wormhole_fee_collector: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
-        let wormhole_emitter: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
+        let owner: &AccountInfo<'_> = next_account_info(accounts_iter)?;
+        let config: &AccountInfo<'_> = next_account_info(accounts_iter)?;
+        let wormhole_bridge: &AccountInfo<'_> = next_account_info(accounts_iter)?;
+        let wormhole_fee_collector: &AccountInfo<'_> = next_account_info(accounts_iter)?;
+        let wormhole_emitter: &AccountInfo<'_> = next_account_info(accounts_iter)?;
         let wormhole_sequence: &AccountInfo<'_> = next_account_info(accounts_iter)?;
-
 
         const SEED_PREFIX_EMITTER: &[u8; 7] = b"emitter";
         const SEED_PREFIX_CONFIG:  &[u8; 6] = b"config";
 
         let rent: Rent = Rent::default();
-        let config_rent: u64 = rent.minimum_balance(141);
-        let emitter_rent: u64 = rent.minimum_balance(9);
+        let config_rent: u64 = rent.minimum_balance(133);
+        let emitter_rent: u64 = rent.minimum_balance(1);
         let (config_pubkey, config_bump) = Pubkey::find_program_address(&[b"config"], program_id);
         let (emitter_pubkey, emitter_bump) = Pubkey::find_program_address(&[b"emitter"], program_id);
 
@@ -339,7 +338,7 @@ impl Processor {
                 owner.key, 
                 &config_pubkey, 
                 config_rent, 
-                141, 
+                133, 
                 program_id),
              &[owner.clone(),config.clone()], 
              &[&[ SEED_PREFIX_CONFIG,&[config_bump]]])?;
@@ -349,7 +348,7 @@ impl Processor {
                 owner.key, 
                 &emitter_pubkey, 
                 emitter_rent, 
-                9, 
+                1, 
                 program_id),
              &[owner.clone(),wormhole_emitter.clone()], 
              &[&[SEED_PREFIX_EMITTER ,&[emitter_bump]]])?;
@@ -361,7 +360,7 @@ impl Processor {
         };
 
         let config_data: Config = Config{
-            discriminator: 0,
+            //discriminator: 0,
             owner: owner.key.to_bytes(),
             wormhole,
             batch_id: 0,
@@ -369,7 +368,8 @@ impl Processor {
         };
 
         let emitter_data: WormholeEmitter = WormholeEmitter {
-             discriminator: 0, bump: emitter_bump };
+             //discriminator: 0, 
+             bump: emitter_bump };
 
         config_data.serialize(&mut &mut config.data.borrow_mut()[..])?;
         emitter_data.serialize(&mut &mut wormhole_emitter.data.borrow_mut()[..])?;
@@ -385,5 +385,33 @@ impl Processor {
 
         Ok(())
     }
+
+    pub fn update_discriminator(accounts: &[AccountInfo],discriminator:[u8;8]) -> ProgramResult {
+
+        let accounts_iter: &mut std::slice::Iter<'_, AccountInfo<'_>> = &mut accounts.iter();
+
+        let account_to_update: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
+
+        discriminator.serialize(&mut &mut account_to_update.data.borrow_mut()[..8])?;
+
+        Ok(())
+    }
+
+    pub fn close_account(accounts: &[AccountInfo]) -> ProgramResult {
+
+        let accounts_iter: &mut std::slice::Iter<'_, AccountInfo<'_>> = &mut accounts.iter();
+
+        let account_to_close: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
+        let authority: &AccountInfo<'_> = next_account_info(accounts_iter)?; 
+
+        let value = **account_to_close.try_borrow_lamports()?;
+
+        **account_to_close.try_borrow_mut_lamports()? -= value;
+        **authority.try_borrow_mut_lamports()? += value;
+
+        Ok(())
+    }
+
+
 
 }

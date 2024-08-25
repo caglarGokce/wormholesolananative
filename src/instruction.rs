@@ -8,7 +8,10 @@ pub enum WormholeProgramInstruction {
   RegisterEmitter{foreign_emitter:ForeignEmitter},
   SendMessage{message:WormholeMessage},
   ReceiveMessage{vaa_hash:VaaHash},
-  InitConfigAndEmitter
+  UpdateDiscriminator{discriminator:[u8;8]},
+  CloseAccount,
+  InitConfigEmitter,
+
 }
 
 impl WormholeProgramInstruction {
@@ -27,7 +30,21 @@ impl WormholeProgramInstruction {
         vaa_hash:VaaHash::try_from_slice(&rest)?
 
       },
-      4 => Self::InitConfigAndEmitter,
+      4 => Self::InitConfigEmitter,
+      5 =>{
+        if rest.len() != 8 {
+          return Err(ProgramError::InvalidInstructionData);
+      }
+
+      // Create an array and copy the slice into it
+      let mut discriminator = [0u8; 8];
+      discriminator.copy_from_slice(&rest[..8]);
+
+      Self::UpdateDiscriminator {
+          discriminator,
+      }
+      },
+      6 => Self::CloseAccount,
 
       _ => return Err(InvalidInstruction.into()),
     })
@@ -39,7 +56,6 @@ pub enum EmitterInstruction {
   Initialize, // placeholder
   PostMessage {
       batch_id: u32,
-      alive:u8,
       payload: Vec<u8>,
       finality: u8,
   },

@@ -3,7 +3,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 
 #[derive(BorshSerialize, BorshDeserialize, Debug, Clone)]
 pub struct Config {
-    pub discriminator:u64,
+    //pub discriminator:u64,
     pub owner: [u8;32],
     pub wormhole: WormholeAddresses,
     pub batch_id: u32,
@@ -34,7 +34,7 @@ pub struct BridgeConfig {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct WormholeEmitter {
-    pub discriminator: u64,
+    //pub discriminator: u64,
     pub bump: u8,
 }
 
